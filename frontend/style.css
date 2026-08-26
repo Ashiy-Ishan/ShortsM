@@ -1,0 +1,74 @@
+:root {
+  --bg:          #070B14;
+  --card:        #1E293B;
+  --border:      #334155;
+  --accent:      #6366F1;
+  --accent-h:    #818CF8;
+  --text:        #F1F5F9;
+  --muted:       #64748B;
+  --dim:         #94A3B8;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  width: 100%;
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;           /* no scroll ever */
+}
+
+/* ── Orbs ───────────────────────────────── */
+.bg-orbs { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.28; }
+.orb-1 { width: 55vw; height: 55vw; background: radial-gradient(circle, #6366F1, transparent); top: -15vw; left: -15vw; animation: f1 14s ease-in-out infinite; }
+.orb-2 { width: 45vw; height: 45vw; background: radial-gradient(circle, #8B5CF6, transparent); bottom: -10vw; right: -10vw; animation: f2 18s ease-in-out infinite; }
+.orb-3 { width: 35vw; height: 35vw; background: radial-gradient(circle, #0EA5E9, transparent); top: 40%; left: 58%; animation: f3 22s ease-in-out infinite; }
+@keyframes f1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(3vw,5vw)} }
+@keyframes f2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-4vw,-3vw)} }
+@keyframes f3 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(2vw,-4vw)} }
+
+/* ── Layout ─────────────────────────────── */
+.landing {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 2vh, 24px);
+  padding: 5vw;
+  text-align: center;
+}
+
+/* ── Logo ───────────────────────────────── */
+.logo {
+  font-size: clamp(2.8rem, 8vw, 6rem);
+  font-weight: 800;
+  letter-spacing: -2px;
+  color: var(--text);
+  line-height: 1;
+}
+.logo .grad {
+  background: linear-gradient(135deg, var(--accent), var(--accent-h), #A78BFA);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Text ───────────────────────────────── */
+.tagline {
+  font-size: clamp(1rem, 3vw, 1.8rem);
+  font-weight: 600;
+  color: var(--dim);
+  letter-spacing: -0.3px;
+}
+.subtitle {
+  font-size: clamp(0.8rem, 1.8vw, 1rem);
+  color: var(--muted);
+  line-height: 1.7;
+  max-width: 44ch;
+}
