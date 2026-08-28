@@ -1,22 +1,74 @@
 <!DOCTYPE html>
-<html lang="en" >
+<html lang="en">
 <head>
-    <meta charset="UTP-8"/>
-    <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-    <title>ShortsM</title>
-    <link rel="preconnect" href="https:fonts.googleapis.com"/>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>ShortsM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="/static/style.css"/>
 </head>
 <body>
 <div class="bg-orbs">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
 </div>
-<main class="landing">
-    <div class="logo">Shorts<span class="grad">M</span></div>
-</main>
+
+<div class="app-shell">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">Shorts<span class="grad">M</span></div>
+
+    <ul class="steps">
+      <li class="step step-active"><span class="step-num">01</span> Source</li>
+      <li class="step step-locked"><span class="step-num">02</span> Download</li>
+      <li class="step step-locked"><span class="step-num">03</span> Transcribe</li>
+      <li class="step step-locked"><span class="step-num">04</span> Detect Hooks</li>
+      <li class="step step-locked"><span class="step-num">05</span> Render</li>
+      <li class="step step-locked"><span class="step-num">06</span> Gallery</li>
+      <li class="step step-locked"><span class="step-num">07</span> Upload</li>
+    </ul>
+  </nav>
+
+  <!-- Main -->
+  <main class="main-content">
+    <div class="page-header">
+      <h1>Source Video</h1>
+      <p class="page-sub">Paste a YouTube URL to inspect available formats.</p>
+    </div>
+
+    <div class="card">
+      <div class="field-row">
+        <div class="field flex-1">
+          <label class="label">YouTube URL</label>
+          <input id="urlInput" class="input" type="url" placeholder="https://www.youtube.com/watch?v=..."/>
+        </div>
+        <div class="field field-btn">
+          <button id="fetchBtn" class="btn btn-primary" onclick="fetchInfo()">Fetch</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Video info result -->
+    <div id="infoCard" class="card hidden">
+      <div class="video-meta">
+        <img id="thumb" class="thumbnail" src="" alt="thumbnail"/>
+        <div class="meta-text">
+          <div class="video-title" id="videoTitle"></div>
+          <div class="video-meta-line" id="videoMeta"></div>
+        </div>
+      </div>
+      <hr class="divider"/>
+      <label class="label">Available Formats</label>
+      <div id="formatList" class="format-list"></div>
+    </div>
+
+    <div id="errorCard" class="card error-card hidden">
+      <p id="errorMsg"></p>
+    </div>
+  </main>
+</div>
+
 <script src="/static/app.js"></script>
 </body>
 </html>
