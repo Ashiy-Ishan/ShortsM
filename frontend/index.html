@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>ShortsM</title>
+  <title>ShortsM — AI Shorts Generator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="/static/style.css"/>
@@ -20,52 +20,234 @@
     <div class="sidebar-logo">Shorts<span class="grad">M</span></div>
 
     <ul class="steps">
-      <li class="step step-active"><span class="step-num">01</span> Source</li>
-      <li class="step step-locked"><span class="step-num">02</span> Download</li>
-      <li class="step step-locked"><span class="step-num">03</span> Transcribe</li>
-      <li class="step step-locked"><span class="step-num">04</span> Detect Hooks</li>
-      <li class="step step-locked"><span class="step-num">05</span> Render</li>
-      <li class="step step-locked"><span class="step-num">06</span> Gallery</li>
-      <li class="step step-locked"><span class="step-num">07</span> Upload</li>
+      <li class="step step-active" onclick="switchStep(1)"><span class="step-num">01</span> Source & Download</li>
+      <li class="step" onclick="switchStep(2)"><span class="step-num">02</span> Transcribe</li>
+      <li class="step" onclick="switchStep(3)"><span class="step-num">03</span> Detect Hooks</li>
+      <li class="step" onclick="switchStep(4)"><span class="step-num">04</span> Render</li>
+      <li class="step" onclick="switchStep(5)"><span class="step-num">05</span> Gallery</li>
+      <li class="step" onclick="switchStep(6)"><span class="step-num">06</span> Upload</li>
     </ul>
+
+    <div class="sidebar-footer">
+      <span class="status-indicator"></span> v2.0 Ready
+    </div>
   </nav>
 
-  <!-- Main -->
+  <!-- Main Content Area -->
   <main class="main-content">
-    <div class="page-header">
-      <h1>Source Video</h1>
-      <p class="page-sub">Paste a YouTube URL to inspect available formats.</p>
-    </div>
 
-    <div class="card">
-      <div class="field-row">
-        <div class="field flex-1">
-          <label class="label">YouTube URL</label>
-          <input id="urlInput" class="input" type="url" placeholder="https://www.youtube.com/watch?v=..."/>
-        </div>
-        <div class="field field-btn">
-          <button id="fetchBtn" class="btn btn-primary" onclick="fetchInfo()">Fetch</button>
+    <!-- STEP 1: SOURCE & DOWNLOAD -->
+    <section id="panel-1" class="step-panel">
+      <div class="page-header">
+        <h1>Source & Download Video</h1>
+        <p class="page-sub">Enter a YouTube URL to inspect and download high-quality video locally.</p>
+      </div>
+
+      <div class="card">
+        <div class="field-row">
+          <div class="field flex-1">
+            <label class="label">YouTube URL</label>
+            <input id="urlInput" class="input" type="url" placeholder="https://www.youtube.com/watch?v=..."/>
+          </div>
+          <div class="field field-btn">
+            <button id="fetchBtn" class="btn btn-secondary" onclick="fetchInfo()">Fetch Formats</button>
+            <button id="quickDlBtn" class="btn btn-primary" onclick="startDownload(true)">Quick Download</button>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Video info result -->
-    <div id="infoCard" class="card hidden">
-      <div class="video-meta">
-        <img id="thumb" class="thumbnail" src="" alt="thumbnail"/>
-        <div class="meta-text">
-          <div class="video-title" id="videoTitle"></div>
-          <div class="video-meta-line" id="videoMeta"></div>
+      <!-- Video Details & Format Selection -->
+      <div id="infoCard" class="card hidden">
+        <div class="video-meta">
+          <img id="thumb" class="thumbnail" src="" alt="thumbnail"/>
+          <div class="meta-text">
+            <div class="video-title" id="videoTitle"></div>
+            <div class="video-meta-line" id="videoMeta"></div>
+          </div>
+        </div>
+        <hr class="divider"/>
+        <label class="label">Select Quality / Format</label>
+        <div id="formatList" class="format-list"></div>
+        <div style="margin-top: 14px; display: flex; gap: 10px;">
+          <button id="dlSelectedBtn" class="btn btn-primary" onclick="startDownload(false)">Download Selected Format</button>
         </div>
       </div>
-      <hr class="divider"/>
-      <label class="label">Available Formats</label>
-      <div id="formatList" class="format-list"></div>
-    </div>
 
+      <!-- Download Progress & Result -->
+      <div id="dlStatus" class="status-msg hidden"></div>
+
+      <div id="dlCard" class="card hidden">
+        <div class="info-row"><strong>Downloaded:</strong> <span id="dlFileName"></span></div>
+        <div class="info-row"><strong>File Size:</strong> <span id="dlFileSize"></span> MB</div>
+        <div class="info-row"><strong>Path:</strong> <code id="dlFilePath" class="code-badge"></code></div>
+        <div style="margin-top: 14px;">
+          <button class="btn btn-accent" onclick="switchStep(2)">Proceed to Transcribe &rarr;</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 2: TRANSCRIBE -->
+    <section id="panel-2" class="step-panel hidden">
+      <div class="page-header">
+        <h1>Transcribe Audio</h1>
+        <p class="page-sub">Extract spoken dialog into timestamped segments using faster-whisper.</p>
+      </div>
+
+      <div class="card">
+        <div class="field-row">
+          <div class="field flex-1">
+            <label class="label">Video File</label>
+            <input id="transcribePathInput" class="input" type="text" readonly/>
+          </div>
+          <div class="field field-btn">
+            <button id="transcribeBtn" class="btn btn-primary" onclick="startTranscribe()">Transcribe</button>
+          </div>
+        </div>
+        <div id="transcribeStatus" class="status-msg hidden"></div>
+      </div>
+
+      <div id="transcriptCard" class="card hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <label class="label">Detected Segments (<span id="segCount">0</span>)</label>
+          <button class="btn btn-accent" onclick="switchStep(3)">Proceed to Detect Hooks &rarr;</button>
+        </div>
+        <div id="segmentsList" class="transcript-scroll"></div>
+      </div>
+    </section>
+
+    <!-- STEP 3: DETECT HOOKS -->
+    <section id="panel-3" class="step-panel hidden">
+      <div class="page-header">
+        <h1>Detect Hooks & Clips</h1>
+        <p class="page-sub">Identify engaging viral moments and select a clip to turn into a Short.</p>
+      </div>
+
+      <div class="card">
+        <div class="field-row">
+          <div class="field">
+            <label class="label">Min Duration</label>
+            <input id="minDurInput" class="input" type="number" value="15" style="width: 100px;"/>
+          </div>
+          <div class="field">
+            <label class="label">Max Duration</label>
+            <input id="maxDurInput" class="input" type="number" value="50" style="width: 100px;"/>
+          </div>
+          <div class="field field-btn">
+            <button id="detectBtn" class="btn btn-primary" onclick="detectHooks()">Find Hooks</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Manual Clip Selection / Override -->
+      <div class="card" style="margin-top: 10px;">
+        <label class="label">Selected Clip Range (Seconds)</label>
+        <div class="field-row" style="margin-top: 6px;">
+          <div class="field">
+            <label class="label">Start (s)</label>
+            <input id="clipStartInput" class="input" type="number" step="0.5" value="0.0" style="width: 120px;"/>
+          </div>
+          <div class="field">
+            <label class="label">End (s)</label>
+            <input id="clipEndInput" class="input" type="number" step="0.5" value="30.0" style="width: 120px;"/>
+          </div>
+          <div class="field field-btn">
+            <button class="btn btn-accent" onclick="switchStep(4)">Ready to Render &rarr;</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="hooksList" class="hooks-grid" style="margin-top: 12px;"></div>
+    </section>
+
+    <!-- STEP 4: RENDER -->
+    <section id="panel-4" class="step-panel hidden">
+      <div class="page-header">
+        <h1>Render Vertical 9:16 Short</h1>
+        <p class="page-sub">Export vertical video with ambient blurred background and burned-in subtitles.</p>
+      </div>
+
+      <div class="card">
+        <div class="info-row"><strong>Input Video:</strong> <span id="renderVideoName">-</span></div>
+        <div class="info-row"><strong>Clip Interval:</strong> <span id="renderClipTime">0s &rarr; 30s</span></div>
+        <div class="field-row" style="margin-top: 12px; align-items: center;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.88rem; cursor: pointer;">
+            <input id="subtitlesCheck" type="checkbox" checked/> Burn Stylized Subtitles
+          </label>
+          <div style="flex: 1;"></div>
+          <button id="renderBtn" class="btn btn-primary" onclick="startRender()">Render Short (9:16)</button>
+        </div>
+        <div id="renderStatus" class="status-msg hidden"></div>
+      </div>
+
+      <div id="renderResultCard" class="card hidden" style="margin-top: 12px;">
+        <h3>Short Successfully Rendered!</h3>
+        <p id="renderResultInfo" class="page-sub" style="margin: 6px 0 12px;"></p>
+        <div style="display: flex; gap: 10px;">
+          <button class="btn btn-accent" onclick="switchStep(5)">Open in Gallery &rarr;</button>
+          <button class="btn btn-secondary" onclick="sendRenderToUpload()">Send to Upload &rarr;</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 5: GALLERY -->
+    <section id="panel-5" class="step-panel hidden">
+      <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-end;">
+        <div>
+          <h1>Shorts Gallery</h1>
+          <p class="page-sub">Preview and manage your generated vertical Shorts.</p>
+        </div>
+        <button class="btn btn-secondary" onclick="loadGallery()">Refresh</button>
+      </div>
+
+      <div class="gallery-layout">
+        <div class="gallery-list" id="galleryItems"></div>
+        <div class="gallery-player-card card">
+          <label class="label">Preview Player</label>
+          <video id="galleryVideoPlayer" class="vertical-player" controls preload="metadata"></video>
+          <div id="playerTitle" class="video-title" style="margin-top: 10px;">Select a short to play</div>
+          <div style="display: flex; gap: 8px; margin-top: 8px;">
+            <button id="playerUploadBtn" class="btn btn-accent" onclick="uploadCurrentGalleryVideo()">Upload to ImageKit</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 6: UPLOAD -->
+    <section id="panel-6" class="step-panel hidden">
+      <div class="page-header">
+        <h1>Upload to CDN</h1>
+        <p class="page-sub">Upload rendered shorts directly to ImageKit CDN storage.</p>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <label class="label">File Path</label>
+          <input id="uploadFilePath" class="input" type="text" placeholder="/path/to/short.mp4"/>
+        </div>
+        <div class="field" style="margin-top: 10px;">
+          <label class="label">Folder in CDN</label>
+          <input id="uploadFolder" class="input" type="text" value="/shorts"/>
+        </div>
+        <div style="margin-top: 14px;">
+          <button id="uploadBtn" class="btn btn-primary" onclick="startUpload()">Upload Now</button>
+        </div>
+        <div id="uploadStatus" class="status-msg hidden"></div>
+      </div>
+
+      <div id="uploadResultCard" class="card hidden" style="margin-top: 12px;">
+        <label class="label">CDN Live URL</label>
+        <div class="field-row" style="margin-top: 6px;">
+          <input id="cdnUrlInput" class="input flex-1" type="text" readonly/>
+          <button class="btn btn-secondary" onclick="copyCdnUrl()">Copy URL</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Global Error Toast/Card -->
     <div id="errorCard" class="card error-card hidden">
       <p id="errorMsg"></p>
     </div>
+
   </main>
 </div>
 
