@@ -3,5 +3,3 @@ uvicorn[standard]
 pywebview
 yt-dlp
 faster-whisper
-moviepy
-imagekitio

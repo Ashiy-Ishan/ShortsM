@@ -219,3 +219,6 @@ __marimo__/
 
 #ide
 .idea
+
+# Generated application media and transcripts
+data/

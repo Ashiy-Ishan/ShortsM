@@ -5,6 +5,7 @@ import sys
 import time
 import socket
 import threading
+import logging
 
 # Filter out snap paths from LD_LIBRARY_PATH to avoid glibc / libpthread version conflicts
 if "LD_LIBRARY_PATH" in os.environ:
@@ -16,6 +17,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import uvicorn
 import webview
 from api.routes import app
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 def find_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -64,7 +67,7 @@ def main():
     print(f"[ShortsM] Starting backend server at {server_url} ...")
 
     t = threading.Thread(
-        target=lambda: uvicorn.run(app, host="127.0.0.1", port=port, log_level="error"),
+        target=lambda: uvicorn.run(app, host="127.0.0.1", port=port, log_level="info"),
         daemon=True
     )
     t.start()

@@ -18,8 +18,13 @@ def detect_hooks(segments: list[dict], min_duration: float = 15.0, max_duration:
 
     for i in range(n):
         start_seg = segments[i]
-        start_time = start_seg["start"]
-        first_text = start_seg["text"].lower()
+        try:
+            start_time = float(start_seg["start"])
+            first_text = str(start_seg["text"]).strip().lower()
+        except (KeyError, TypeError, ValueError):
+            continue
+        if start_time < 0 or not first_text:
+            continue
 
         # Check if first sentence sounds like a hook
         hook_score = 1.0
@@ -39,12 +44,19 @@ def detect_hooks(segments: list[dict], min_duration: float = 15.0, max_duration:
         end_time = start_time
         for j in range(i, n):
             current_seg = segments[j]
-            candidate_duration = current_seg["end"] - start_time
+            try:
+                current_end = float(current_seg["end"])
+                current_text = str(current_seg["text"]).strip()
+            except (KeyError, TypeError, ValueError):
+                continue
+            if current_end <= start_time:
+                continue
+            candidate_duration = current_end - start_time
             if candidate_duration > max_duration and clip_texts:
                 break
 
-            clip_texts.append(current_seg["text"])
-            end_time = current_seg["end"]
+            clip_texts.append(current_text)
+            end_time = current_end
 
             if candidate_duration >= min_duration:
                 # Potential candidate window found
@@ -110,4 +122,3 @@ def detect_hooks(segments: list[dict], min_duration: float = 15.0, max_duration:
             idx += 1
 
     return filtered
-

@@ -7,10 +7,41 @@ const state = {
   downloadedFile: null,   // { filepath, filename, filesize_mb, duration }
   transcriptData: null,   // { segments, full_text, language }
   hooks: [],              // candidate clips
-  selectedClip: { start: 0.0, end: 30.0, title: '' },
+  selectedClip: null,
   lastRenderedShort: null,// { filepath, filename, video_url }
   activeGalleryShort: null,
+  activeDownloadJob: null,
 };
+
+function addLog(message, level = 'info', time = null) {
+  const terminal = document.getElementById('appLogTerminal');
+  if (!terminal) return;
+  const line = document.createElement('div');
+  line.className = `log-line log-${level}`;
+  const stamp = document.createElement('span');
+  stamp.className = 'log-time';
+  stamp.textContent = time ? new Date(time).toLocaleTimeString() : new Date().toLocaleTimeString();
+  const text = document.createElement('span');
+  text.textContent = message;
+  line.append(stamp, text);
+  terminal.appendChild(line);
+  while (terminal.children.length > 300) terminal.removeChild(terminal.firstChild);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+async function apiRequest(url, options = {}) {
+  const res = await fetch(url, options);
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`Server returned an invalid response (${res.status}).`);
+  }
+  if (!res.ok || data.error) {
+    throw new Error(data.error || `Request failed (${res.status}).`);
+  }
+  return data;
+}
 
 function fmtDuration(s) {
   if (!s) return '0:00';
@@ -44,7 +75,7 @@ function switchStep(stepNum) {
   });
 
   // Switch panels
-  for (let i = 1; i <= 6; i++) {
+  for (let i = 1; i <= 5; i++) {
     const panel = document.getElementById(`panel-${i}`);
     if (panel) {
       if (i === stepNum) {
@@ -61,12 +92,12 @@ function switchStep(stepNum) {
   } else if (stepNum === 4) {
     const vName = state.downloadedFile ? state.downloadedFile.filename : 'None';
     document.getElementById('renderVideoName').textContent = vName;
-    document.getElementById('renderClipTime').textContent =
-      `${state.selectedClip.start}s  \u2192  ${state.selectedClip.end}s (Duration: ${(state.selectedClip.end - state.selectedClip.start).toFixed(1)}s)`;
+    const clip = state.selectedClip;
+    document.getElementById('renderClipTime').textContent = clip
+      ? `${clip.start}s  \u2192  ${clip.end}s (Duration: ${(clip.end - clip.start).toFixed(1)}s)`
+      : 'No hook selected';
   } else if (stepNum === 5) {
     loadGallery();
-  } else if (stepNum === 6 && state.lastRenderedShort) {
-    document.getElementById('uploadFilePath').value = state.lastRenderedShort.filepath || '';
   }
 }
 
@@ -81,19 +112,14 @@ async function fetchInfo() {
   btn.textContent = 'Fetching...';
   document.getElementById('infoCard').classList.add('hidden');
   showError('');
+  addLog(`Fetching video information for ${url}`);
 
   try {
-    const res = await fetch('/api/video/info', {
+    const data = await apiRequest('/api/video/info', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
     });
-    const data = await res.json();
-
-    if (data.error) {
-      showError(data.error);
-      return;
-    }
 
     state.videoInfo = data;
     document.getElementById('thumb').src = data.thumbnail || '';
@@ -122,7 +148,9 @@ async function fetchInfo() {
     });
 
     document.getElementById('infoCard').classList.remove('hidden');
+    addLog(`Found ${data.formats?.length || 0} available formats.`);
   } catch (e) {
+    addLog(`Video information failed: ${e.message}`, 'error');
     showError('Request failed: ' + e.message);
   } finally {
     btn.disabled = false;
@@ -142,6 +170,11 @@ async function startDownload(isQuick = false) {
   const dlBtn = document.getElementById('dlSelectedBtn');
   const status = document.getElementById('dlStatus');
   const dlCard = document.getElementById('dlCard');
+  const progressCard = document.getElementById('downloadProgressCard');
+  const progressBar = document.getElementById('downloadProgressBar');
+  const progressValue = document.getElementById('downloadProgressValue');
+  const progressLabel = document.getElementById('downloadProgressLabel');
+  const cancelBtn = document.getElementById('cancelDownloadBtn');
 
   if (!url) {
     showError('Please enter a YouTube video URL first.');
@@ -157,34 +190,92 @@ async function startDownload(isQuick = false) {
   status.textContent = 'Downloading video and merging audio streams... Please wait.';
   status.classList.remove('hidden');
   dlCard.classList.add('hidden');
+  progressCard.classList.remove('hidden');
+  progressBar.style.width = '0%';
+  progressValue.textContent = '0%';
+  cancelBtn.disabled = false;
   showError('');
+  addLog(`Starting ${isQuick ? 'quick' : 'selected-format'} download.`);
 
   try {
-    const res = await fetch('/api/video/download', {
+    const data = await apiRequest('/api/video/download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, format_id }),
     });
-    const data = await res.json();
-
-    if (data.error) {
-      status.classList.add('hidden');
-      showError(data.error);
-      return;
-    }
-
-    state.downloadedFile = data;
-    document.getElementById('dlFileName').textContent = data.filename;
-    document.getElementById('dlFileSize').textContent = data.filesize_mb;
-    document.getElementById('dlFilePath').textContent = data.filepath;
+    state.activeDownloadJob = data.job_id;
+    addLog(`Download job ${data.job_id.slice(0, 8)} created.`);
+    const result = await monitorDownload(data.job_id, {
+      progressCard, progressBar, progressValue, progressLabel, cancelBtn,
+    });
+    if (!result) return;
+    state.downloadedFile = result;
+    document.getElementById('dlFileName').textContent = result.filename;
+    document.getElementById('dlFileSize').textContent = result.filesize_mb;
+    document.getElementById('dlFilePath').textContent = result.filepath;
 
     status.textContent = '\u2713 Video downloaded successfully!';
     dlCard.classList.remove('hidden');
+    addLog(`Download complete: ${result.filename}.`);
   } catch (e) {
+    status.classList.add('hidden');
+    progressCard.classList.add('hidden');
+    addLog(`Download failed: ${e.message}`, 'error');
     showError('Download failed: ' + e.message);
   } finally {
+    state.activeDownloadJob = null;
     if (quickBtn) quickBtn.disabled = false;
     if (dlBtn) dlBtn.disabled = false;
+  }
+}
+
+async function monitorDownload(jobId, elements) {
+  let lastLogCount = 0;
+  while (true) {
+    const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
+    const job = await response.json();
+    if (!response.ok || job.error && job.status === 'not_found') {
+      throw new Error(job.error || 'Download job could not be found.');
+    }
+    const progress = Number(job.progress || 0);
+    elements.progressBar.style.width = `${Math.min(100, progress)}%`;
+    elements.progressValue.textContent = `${progress.toFixed(1)}%`;
+    elements.progressLabel.textContent = job.message || 'Downloading...';
+    document.getElementById('downloadSpeed').textContent = `Speed: ${job.speed || '--'}`;
+    document.getElementById('downloadEta').textContent = `ETA: ${job.eta || '--'}`;
+    (job.logs || []).slice(lastLogCount).forEach(entry => addLog(entry.message, entry.level, entry.time));
+    lastLogCount = (job.logs || []).length;
+
+    if (job.status === 'completed') {
+      elements.progressCard.classList.add('hidden');
+      return job.result;
+    }
+    if (job.status === 'cancelled') {
+      elements.progressCard.classList.add('hidden');
+      addLog('Download cancelled.', 'warning');
+      showError('Download cancelled.');
+      return null;
+    }
+    if (job.status === 'failed') {
+      elements.progressCard.classList.add('hidden');
+      throw new Error(job.error || 'Download failed.');
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+}
+
+async function cancelDownload() {
+  if (!state.activeDownloadJob) return;
+  const jobId = state.activeDownloadJob;
+  const button = document.getElementById('cancelDownloadBtn');
+  button.disabled = true;
+  addLog('Requesting download cancellation...', 'warning');
+  try {
+    await apiRequest(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' });
+  } catch (e) {
+    button.disabled = false;
+    addLog(`Cancellation failed: ${e.message}`, 'error');
+    showError(e.message);
   }
 }
 
@@ -206,20 +297,14 @@ async function startTranscribe() {
   status.classList.remove('hidden');
   card.classList.add('hidden');
   showError('');
+  addLog('Starting transcription.');
 
   try {
-    const res = await fetch('/api/video/transcribe', {
+    const data = await apiRequest('/api/video/transcribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filepath, model_size: 'tiny' }),
     });
-    const data = await res.json();
-
-    if (data.error) {
-      status.classList.add('hidden');
-      showError(data.error);
-      return;
-    }
 
     state.transcriptData = data;
     const segs = data.segments || [];
@@ -230,14 +315,23 @@ async function startTranscribe() {
     segs.forEach(s => {
       const row = document.createElement('div');
       row.className = 'segment-row';
-      row.innerHTML = `<span class="time-badge">${s.start}s - ${s.end}s</span> <span class="seg-text">${s.text}</span>`;
+      const time = document.createElement('span');
+      time.className = 'time-badge';
+      time.textContent = `${s.start}s - ${s.end}s`;
+      const text = document.createElement('span');
+      text.className = 'seg-text';
+      text.textContent = s.text;
+      row.append(time, text);
       list.appendChild(row);
     });
 
     status.textContent = `\u2713 Transcribed ${segs.length} segments! Detected language: ${data.language || 'auto'}`;
     card.classList.remove('hidden');
+    addLog(`Transcription complete: ${segs.length} segments.`);
   } catch (e) {
+    status.classList.add('hidden');
     showError('Transcription failed: ' + e.message);
+    addLog(`Transcription failed: ${e.message}`, 'error');
   } finally {
     btn.disabled = false;
   }
@@ -258,14 +352,14 @@ async function detectHooks() {
   btn.disabled = true;
   btn.textContent = 'Detecting...';
   showError('');
+  addLog('Detecting candidate hooks.');
 
   try {
-    const res = await fetch('/api/video/hooks', {
+    const data = await apiRequest('/api/video/hooks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ segments, min_duration, max_duration }),
     });
-    const data = await res.json();
 
     state.hooks = data.hooks || [];
     renderHooksList();
@@ -273,8 +367,10 @@ async function detectHooks() {
     if (state.hooks.length > 0) {
       selectHook(state.hooks[0]);
     }
+    addLog(`Hook detection complete: ${state.hooks.length} candidates.`);
   } catch (e) {
     showError('Hook detection error: ' + e.message);
+    addLog(`Hook detection failed: ${e.message}`, 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Find Hooks';
@@ -293,21 +389,34 @@ function renderHooksList() {
   state.hooks.forEach(h => {
     const card = document.createElement('div');
     card.className = 'hook-card card';
-    if (state.selectedClip.start === h.start && state.selectedClip.end === h.end) {
+    if (state.selectedClip &&
+        state.selectedClip.start === h.start &&
+        state.selectedClip.end === h.end) {
       card.classList.add('selected-hook');
     }
 
-    card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-        <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text);">${h.title}</h4>
-        <span class="score-badge">\u2605 Score: ${h.score}</span>
-      </div>
-      <p class="hook-preview">${h.preview}</p>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-        <span class="time-badge">${h.start}s &rarr; ${h.end}s (${h.duration}s)</span>
-        <button class="btn btn-sm btn-accent" onclick='selectHook(${JSON.stringify(h)})'>Select Hook</button>
-      </div>
-    `;
+    const heading = document.createElement('div');
+    heading.className = 'hook-heading';
+    const title = document.createElement('h4');
+    title.textContent = h.title;
+    const score = document.createElement('span');
+    score.className = 'score-badge';
+    score.textContent = `★ Score: ${h.score}`;
+    heading.append(title, score);
+    const preview = document.createElement('p');
+    preview.className = 'hook-preview';
+    preview.textContent = h.preview;
+    const footer = document.createElement('div');
+    footer.className = 'hook-footer';
+    const range = document.createElement('span');
+    range.className = 'time-badge';
+    range.textContent = `${h.start}s → ${h.end}s (${h.duration}s)`;
+    const select = document.createElement('button');
+    select.className = 'btn btn-sm btn-accent';
+    select.textContent = 'Select Hook';
+    select.addEventListener('click', () => selectHook(h));
+    footer.append(range, select);
+    card.append(heading, preview, footer);
     list.appendChild(card);
   });
 }
@@ -322,8 +431,12 @@ function selectHook(h) {
 // ── 04 RENDER SHORT ───────────────────────────────────
 async function startRender() {
   const video_path = state.downloadedFile ? state.downloadedFile.filepath : '';
-  const start_time = parseFloat(document.getElementById('clipStartInput').value) || state.selectedClip.start;
-  const end_time = parseFloat(document.getElementById('clipEndInput').value) || state.selectedClip.end;
+  if (!state.selectedClip) {
+    showError('Select a detected hook or add a manual hook before rendering.');
+    return;
+  }
+  const start_time = state.selectedClip.start;
+  const end_time = state.selectedClip.end;
   const with_subtitles = document.getElementById('subtitlesCheck').checked;
   const segments = state.transcriptData ? state.transcriptData.segments : [];
 
@@ -341,38 +454,28 @@ async function startRender() {
   status.classList.remove('hidden');
   resultCard.classList.add('hidden');
   showError('');
+  addLog(`Rendering clip ${start_time}s to ${end_time}s.`);
 
   try {
-    const res = await fetch('/api/video/render', {
+    const data = await apiRequest('/api/video/render', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ video_path, start_time, end_time, segments, with_subtitles }),
     });
-    const data = await res.json();
-
-    if (data.error) {
-      status.classList.add('hidden');
-      showError(data.error);
-      return;
-    }
 
     state.lastRenderedShort = data;
     status.textContent = '\u2713 Render complete!';
     document.getElementById('renderResultInfo').textContent =
       `${data.filename} (${data.duration}s, ${data.size_mb} MB)`;
     resultCard.classList.remove('hidden');
+    addLog(`Render complete: ${data.filename}.`);
   } catch (e) {
+    status.classList.add('hidden');
     showError('Render failed: ' + e.message);
+    addLog(`Render failed: ${e.message}`, 'error');
   } finally {
     btn.disabled = false;
   }
-}
-
-function sendRenderToUpload() {
-  if (state.lastRenderedShort) {
-    document.getElementById('uploadFilePath').value = state.lastRenderedShort.filepath;
-  }
-  switchStep(6);
 }
 
 // ── 05 GALLERY ────────────────────────────────────────
@@ -381,8 +484,7 @@ async function loadGallery() {
   container.innerHTML = '<p class="page-sub">Loading shorts...</p>';
 
   try {
-    const res = await fetch('/api/gallery');
-    const data = await res.json();
+    const data = await apiRequest('/api/gallery');
     const shorts = data.shorts || [];
 
     container.innerHTML = '';
@@ -394,94 +496,105 @@ async function loadGallery() {
     shorts.forEach(s => {
       const item = document.createElement('div');
       item.className = 'gallery-item card';
-      item.innerHTML = `
-        <div style="font-weight: 700; font-size: 0.9rem; color: var(--text);">${s.filename}</div>
-        <div class="page-sub" style="margin: 4px 0 8px;">Size: ${s.size_mb} MB</div>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn btn-sm btn-primary" onclick="playInGallery('${s.video_url}', '${s.filename}', '${s.filepath}')">Play</button>
-          <button class="btn btn-sm btn-secondary" onclick="sendToUploadDirect('${s.filepath}')">Upload</button>
-        </div>
-      `;
+      const name = document.createElement('div');
+      name.className = 'gallery-name';
+      name.textContent = s.filename;
+      const size = document.createElement('div');
+      size.className = 'page-sub gallery-size';
+      size.textContent = `Size: ${s.size_mb} MB`;
+      const actions = document.createElement('div');
+      actions.className = 'gallery-actions';
+      const play = document.createElement('button');
+      play.className = 'btn btn-sm btn-primary';
+      play.textContent = 'Play';
+      play.addEventListener('click', () => playInGallery(s.video_url, s.filename));
+      actions.append(play);
+      item.append(name, size, actions);
       container.appendChild(item);
     });
 
     if (shorts.length > 0 && !state.activeGalleryShort) {
-      playInGallery(shorts[0].video_url, shorts[0].filename, shorts[0].filepath);
+      playInGallery(shorts[0].video_url, shorts[0].filename);
     }
   } catch (e) {
     showError('Failed to load gallery: ' + e.message);
+    addLog(`Gallery load failed: ${e.message}`, 'error');
   }
 }
 
 function playInGallery(url, title, filepath) {
   const player = document.getElementById('galleryVideoPlayer');
-  player.src = url;
-  player.play().catch(() => {});
+  const normalizedUrl = new URL(url, window.location.href).href;
+  player.addEventListener('error', () => {
+    const detail = player.error ? ` (${player.error.code})` : '';
+    addLog(`Unable to play ${title}${detail}.`, 'error');
+    showError('The selected short could not be played.');
+  }, { once: true });
+  player.pause();
+  player.src = normalizedUrl;
+  player.load();
+  player.play().then(
+    () => addLog(`Playing ${title}.`),
+    error => addLog(`Video loaded. Press play to start ${title}: ${error.message}`, 'warning')
+  );
   document.getElementById('playerTitle').textContent = title;
-  state.activeGalleryShort = { filepath, filename: title, url };
+  state.activeGalleryShort = { filename: title, url: normalizedUrl };
 }
 
-function uploadCurrentGalleryVideo() {
-  if (!state.activeGalleryShort) return;
-  sendToUploadDirect(state.activeGalleryShort.filepath);
-}
-
-function sendToUploadDirect(filepath) {
-  document.getElementById('uploadFilePath').value = filepath;
-  switchStep(6);
-}
-
-// ── 06 UPLOAD ─────────────────────────────────────────
-async function startUpload() {
-  const filepath = document.getElementById('uploadFilePath').value.trim();
-  const folder = document.getElementById('uploadFolder').value.trim() || '/shorts';
-  const btn = document.getElementById('uploadBtn');
-  const status = document.getElementById('uploadStatus');
-  const resultCard = document.getElementById('uploadResultCard');
-
-  if (!filepath) {
-    showError('Please specify a video file path to upload.');
+function addManualHook() {
+  const titleInput = document.getElementById('manualHookTitleInput');
+  const start = Number.parseFloat(document.getElementById('clipStartInput').value);
+  const end = Number.parseFloat(document.getElementById('clipEndInput').value);
+  const title = titleInput.value.trim() || `Manual hook ${state.hooks.length + 1}`;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) {
+    showError('Enter a valid hook range. End must be greater than start.');
     return;
   }
-
-  btn.disabled = true;
-  status.textContent = 'Uploading to ImageKit CDN...';
-  status.classList.remove('hidden');
-  resultCard.classList.add('hidden');
-  showError('');
-
-  try {
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filepath, folder }),
-    });
-    const data = await res.json();
-
-    if (data.error) {
-      status.classList.add('hidden');
-      showError(data.error);
-      return;
-    }
-
-    status.textContent = '\u2713 Uploaded successfully to ImageKit!';
-    document.getElementById('cdnUrlInput').value = data.url;
-    resultCard.classList.remove('hidden');
-  } catch (e) {
-    showError('Upload failed: ' + e.message);
-  } finally {
-    btn.disabled = false;
+  if (end - start > 300) {
+    showError('A hook cannot be longer than 300 seconds.');
+    return;
   }
+  const hook = {
+    id: `manual_${Date.now()}`,
+    start: Number(start.toFixed(2)),
+    end: Number(end.toFixed(2)),
+    duration: Number((end - start).toFixed(1)),
+    title,
+    preview: 'Manually added hook',
+    score: 'manual',
+  };
+  state.hooks.unshift(hook);
+  selectHook(hook);
+  titleInput.value = '';
+  addLog(`Added manual hook: ${title} (${hook.start}s to ${hook.end}s).`);
 }
 
-function copyCdnUrl() {
-  const inp = document.getElementById('cdnUrlInput');
-  inp.select();
-  navigator.clipboard.writeText(inp.value);
-  alert('CDN URL copied to clipboard!');
-}
-
-// Enter key trigger on URL input
+document.querySelectorAll('.steps .step').forEach(step => {
+  const go = () => switchStep(Number(step.dataset.step));
+  step.addEventListener('click', go);
+  step.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      go();
+    }
+  });
+});
+document.querySelectorAll('[data-go-step]').forEach(button => {
+  button.addEventListener('click', () => switchStep(Number(button.dataset.goStep)));
+});
+document.getElementById('fetchBtn').addEventListener('click', fetchInfo);
+document.getElementById('quickDlBtn').addEventListener('click', () => startDownload(true));
+document.getElementById('dlSelectedBtn').addEventListener('click', () => startDownload(false));
+document.getElementById('cancelDownloadBtn').addEventListener('click', cancelDownload);
+document.getElementById('transcribeBtn').addEventListener('click', startTranscribe);
+document.getElementById('detectBtn').addEventListener('click', detectHooks);
+document.getElementById('addManualHookBtn').addEventListener('click', addManualHook);
+document.getElementById('renderBtn').addEventListener('click', startRender);
+document.getElementById('galleryRefreshBtn').addEventListener('click', loadGallery);
+document.getElementById('clearLogsBtn').addEventListener('click', () => {
+  document.getElementById('appLogTerminal').replaceChildren();
+  addLog('Application log cleared.');
+});
 document.getElementById('urlInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') fetchInfo();
 });

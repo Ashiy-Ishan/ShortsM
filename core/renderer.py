@@ -1,9 +1,9 @@
 """core/renderer.py — render 9:16 vertical shorts with blurred background and subtitles via ffmpeg."""
 from __future__ import annotations
-import os
 import subprocess
 import tempfile
 from pathlib import Path
+from core.security import safe_output_name, validate_data_file
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 SHORTS_DIR = DATA_DIR / "shorts"
@@ -39,6 +39,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         seg_start = s.get("start", 0.0)
         seg_end = s.get("end", 0.0)
         text = s.get("text", "").strip().upper()
+        text = text.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}")
+        text = text.replace("\r", " ").replace("\n", " ")
 
         if seg_end <= clip_start or seg_start >= clip_end or not text:
             continue
@@ -67,13 +69,15 @@ def render_short(
     with_subtitles: bool = True
 ) -> dict:
     """Render a vertical 9:16 Short (1080x1920) from input video segment."""
-    inp = Path(video_path)
-    if not inp.exists():
-        return {"error": f"Input video not found: {video_path}"}
+    try:
+        inp = validate_data_file(video_path, allow_short=False)
+        output_name = safe_output_name(output_name)
+    except (ValueError, OSError) as exc:
+        return {"error": str(exc)}
 
     duration = round(end_time - start_time, 2)
-    if duration <= 0:
-        return {"error": "End time must be greater than start time."}
+    if start_time < 0 or duration <= 0 or duration > 300:
+        return {"error": "Clip must be between 0 and 300 seconds with a valid start time."}
 
     stem = inp.stem
     short_slug = output_name or f"short_{stem}_{int(start_time)}_{int(end_time)}"
@@ -145,4 +149,3 @@ def render_short(
         "video_url": f"/data/shorts/{out_file.name}",
         "thumbnail_url": f"/data/shorts/{thumb_file.name}" if thumb_file.exists() else "",
     }
-

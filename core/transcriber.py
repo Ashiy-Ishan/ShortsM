@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 from pathlib import Path
+from core.security import validate_data_file
 
 _whisper_model = None
 
@@ -32,11 +33,10 @@ def write_srt(segments: list[dict], srt_path: Path):
 
 def transcribe_video(filepath: str, model_size: str = "tiny") -> dict:
     """Transcribe a video file and return timestamped segments and full text."""
-    p = Path(filepath)
-    if not p.exists():
-        return {"error": f"File not found: {filepath}"}
-
     try:
+        p = validate_data_file(filepath)
+        if model_size not in {"tiny", "base", "small", "medium", "large-v3"}:
+            return {"error": "Unsupported transcription model."}
         model = get_whisper_model(model_size)
         segments_raw, info = model.transcribe(str(p), beam_size=2, vad_filter=True)
 
@@ -66,6 +66,7 @@ def transcribe_video(filepath: str, model_size: str = "tiny") -> dict:
         }
         json_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
         return result
-    except Exception as e:
-        return {"error": str(e)}
-
+    except (ValueError, OSError) as exc:
+        return {"error": str(exc)}
+    except Exception:
+        return {"error": "Transcription failed. Check that the media file has a readable audio stream."}
