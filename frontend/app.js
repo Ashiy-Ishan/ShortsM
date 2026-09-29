@@ -1,6 +1,6 @@
 // Global state for pipeline
 const state = {
-  currentStep: 1,
+  currentStep: 0,
   sourceUrl: '',
   selectedFormatId: 'best',
   videoInfo: null,
@@ -61,13 +61,22 @@ function showError(msg) {
   setTimeout(() => card.classList.add('hidden'), 6000);
 }
 
+function clearVideoResults() {
+  state.transcriptData = null;
+  state.hooks = [];
+  state.selectedClip = null;
+  document.getElementById('transcriptCard').classList.add('hidden');
+  document.getElementById('hooksList').replaceChildren();
+  document.getElementById('renderResultCard').classList.add('hidden');
+}
+
 function switchStep(stepNum) {
   state.currentStep = stepNum;
 
   // Update sidebar active classes
   const steps = document.querySelectorAll('.steps .step');
-  steps.forEach((el, idx) => {
-    if (idx + 1 === stepNum) {
+  steps.forEach(el => {
+    if (Number(el.dataset.step) === stepNum) {
       el.classList.add('step-active');
     } else {
       el.classList.remove('step-active');
@@ -75,7 +84,7 @@ function switchStep(stepNum) {
   });
 
   // Switch panels
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 0; i <= 5; i++) {
     const panel = document.getElementById(`panel-${i}`);
     if (panel) {
       if (i === stepNum) {
@@ -88,7 +97,8 @@ function switchStep(stepNum) {
 
   // Auto-sync inputs
   if (stepNum === 2 && state.downloadedFile) {
-    document.getElementById('transcribePathInput').value = state.downloadedFile.filepath;
+    document.getElementById('transcribeFileName').textContent =
+      `Using ${state.downloadedFile.filename}. Choose and upload another video to replace it.`;
   } else if (stepNum === 4) {
     const vName = state.downloadedFile ? state.downloadedFile.filename : 'None';
     document.getElementById('renderVideoName').textContent = vName;
@@ -210,6 +220,7 @@ async function startDownload(isQuick = false) {
     });
     if (!result) return;
     state.downloadedFile = result;
+    clearVideoResults();
     document.getElementById('dlFileName').textContent = result.filename;
     document.getElementById('dlFileSize').textContent = result.filesize_mb;
     document.getElementById('dlFilePath').textContent = result.filepath;
@@ -281,14 +292,13 @@ async function cancelDownload() {
 
 // ── 02 TRANSCRIBE ─────────────────────────────────────
 async function startTranscribe() {
-  const filepath = document.getElementById('transcribePathInput').value.trim() ||
-    (state.downloadedFile ? state.downloadedFile.filepath : '');
+  const filepath = state.downloadedFile ? state.downloadedFile.filepath : '';
   const btn = document.getElementById('transcribeBtn');
   const status = document.getElementById('transcribeStatus');
   const card = document.getElementById('transcriptCard');
 
   if (!filepath) {
-    showError('No downloaded video found. Please download a video in Step 1.');
+    showError('Choose and upload a video, or download one from the YouTube Downloader first.');
     return;
   }
 
@@ -303,10 +313,17 @@ async function startTranscribe() {
     const data = await apiRequest('/api/video/transcribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filepath, model_size: 'tiny' }),
+      body: JSON.stringify({
+        filepath,
+        model_size: 'tiny',
+        save_files: document.getElementById('saveTranscriptCheck').checked,
+      }),
     });
 
     state.transcriptData = data;
+    state.hooks = [];
+    state.selectedClip = null;
+    document.getElementById('hooksList').replaceChildren();
     const segs = data.segments || [];
     document.getElementById('segCount').textContent = segs.length;
 
@@ -325,7 +342,7 @@ async function startTranscribe() {
       list.appendChild(row);
     });
 
-    status.textContent = `\u2713 Transcribed ${segs.length} segments! Detected language: ${data.language || 'auto'}`;
+    status.textContent = `\u2713 Transcribed ${segs.length} segments! Detected language: ${data.language || 'auto'}${data.srt_path ? ' Transcript files saved in ShortsM.' : ''}`;
     card.classList.remove('hidden');
     addLog(`Transcription complete: ${segs.length} segments.`);
   } catch (e) {
@@ -382,7 +399,7 @@ function renderHooksList() {
   list.innerHTML = '';
 
   if (state.hooks.length === 0) {
-    list.innerHTML = '<p class="page-sub">No candidate hooks found. You can adjust the manual start/end times above.</p>';
+    list.innerHTML = '<p class="page-sub">No candidate hooks found. Try a wider duration range or transcribe the video again.</p>';
     return;
   }
 
@@ -423,8 +440,6 @@ function renderHooksList() {
 
 function selectHook(h) {
   state.selectedClip = { start: h.start, end: h.end, title: h.title };
-  document.getElementById('clipStartInput').value = h.start;
-  document.getElementById('clipEndInput').value = h.end;
   renderHooksList();
 }
 
@@ -432,7 +447,7 @@ function selectHook(h) {
 async function startRender() {
   const video_path = state.downloadedFile ? state.downloadedFile.filepath : '';
   if (!state.selectedClip) {
-    showError('Select a detected hook or add a manual hook before rendering.');
+    showError('Select a detected hook before rendering.');
     return;
   }
   const start_time = state.selectedClip.start;
@@ -445,7 +460,7 @@ async function startRender() {
   const resultCard = document.getElementById('renderResultCard');
 
   if (!video_path) {
-    showError('No input video found. Please download a video first.');
+    showError('No input video found. Upload a video or download one first.');
     return;
   }
 
@@ -542,32 +557,61 @@ function playInGallery(url, title, filepath) {
   state.activeGalleryShort = { filename: title, url: playableUrl };
 }
 
-function addManualHook() {
-  const titleInput = document.getElementById('manualHookTitleInput');
-  const start = Number.parseFloat(document.getElementById('clipStartInput').value);
-  const end = Number.parseFloat(document.getElementById('clipEndInput').value);
-  const title = titleInput.value.trim() || `Manual hook ${state.hooks.length + 1}`;
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) {
-    showError('Enter a valid hook range. End must be greater than start.');
+async function uploadTranscriptionVideo() {
+  const fileInput = document.getElementById('transcribeFileInput');
+  const file = fileInput.files[0];
+  const button = document.getElementById('uploadVideoBtn');
+  const status = document.getElementById('transcribeStatus');
+  if (!file) {
+    showError('Choose a video file to upload first.');
     return;
   }
-  if (end - start > 300) {
-    showError('A hook cannot be longer than 300 seconds.');
-    return;
+
+  button.disabled = true;
+  status.textContent = `Uploading ${file.name}...`;
+  status.classList.remove('hidden');
+  showError('');
+  addLog(`Uploading video ${file.name}.`);
+  try {
+    const body = new FormData();
+    body.append('file', file);
+    const data = await apiRequest('/api/video/upload', { method: 'POST', body });
+    state.downloadedFile = data;
+    clearVideoResults();
+    document.getElementById('transcribeFileName').textContent = `Ready to transcribe: ${data.filename}`;
+    status.textContent = `Video uploaded: ${data.filename} (${data.filesize_mb} MB).`;
+    addLog(`Video upload complete: ${data.filename}.`);
+  } catch (e) {
+    status.classList.add('hidden');
+    showError(`Video upload failed: ${e.message}`);
+    addLog(`Video upload failed: ${e.message}`, 'error');
+  } finally {
+    button.disabled = false;
   }
-  const hook = {
-    id: `manual_${Date.now()}`,
-    start: Number(start.toFixed(2)),
-    end: Number(end.toFixed(2)),
-    duration: Number((end - start).toFixed(1)),
-    title,
-    preview: 'Manually added hook',
-    score: 'manual',
-  };
-  state.hooks.unshift(hook);
-  selectHook(hook);
-  titleInput.value = '';
-  addLog(`Added manual hook: ${title} (${hook.start}s to ${hook.end}s).`);
+}
+
+function downloadTranscript(format) {
+  if (!state.transcriptData) return;
+  const segments = state.transcriptData.segments || [];
+  const content = format === 'srt'
+    ? segments.map((segment, index) => {
+      const stamp = seconds => {
+        const millis = Math.round((seconds - Math.floor(seconds)) * 1000);
+        const totalSeconds = Math.floor(seconds);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(millis).padStart(3, '0')}`;
+      };
+      return `${index + 1}\n${stamp(segment.start)} --> ${stamp(segment.end)}\n${segment.text}`;
+    }).join('\n\n')
+    : (state.transcriptData.full_text || segments.map(segment => segment.text).join(' '));
+  const blob = new Blob([content], { type: format === 'srt' ? 'text/plain;charset=utf-8' : 'text/plain;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `${state.downloadedFile?.filename?.replace(/\.[^.]+$/, '') || 'transcript'}.${format}`;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 document.querySelectorAll('.steps .step').forEach(step => {
@@ -588,8 +632,10 @@ document.getElementById('quickDlBtn').addEventListener('click', () => startDownl
 document.getElementById('dlSelectedBtn').addEventListener('click', () => startDownload(false));
 document.getElementById('cancelDownloadBtn').addEventListener('click', cancelDownload);
 document.getElementById('transcribeBtn').addEventListener('click', startTranscribe);
+document.getElementById('uploadVideoBtn').addEventListener('click', uploadTranscriptionVideo);
+document.getElementById('downloadSrtBtn').addEventListener('click', () => downloadTranscript('srt'));
+document.getElementById('downloadTxtBtn').addEventListener('click', () => downloadTranscript('txt'));
 document.getElementById('detectBtn').addEventListener('click', detectHooks);
-document.getElementById('addManualHookBtn').addEventListener('click', addManualHook);
 document.getElementById('renderBtn').addEventListener('click', startRender);
 document.getElementById('galleryRefreshBtn').addEventListener('click', loadGallery);
 document.getElementById('clearLogsBtn').addEventListener('click', () => {

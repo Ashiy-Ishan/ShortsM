@@ -20,8 +20,9 @@
     <div class="sidebar-logo">Shorts<span class="grad">M</span></div>
 
     <ul class="steps">
-      <li class="step step-active" data-step="1" tabindex="0"><span class="step-num">01</span> Source & Download</li>
-      <li class="step" data-step="2" tabindex="0"><span class="step-num">02</span> Transcribe</li>
+      <li class="step step-active" data-step="0" tabindex="0"><span class="step-num">00</span> Home</li>
+      <li class="step" data-step="1" tabindex="0"><span class="step-num">01</span> YouTube Downloader</li>
+      <li class="step" data-step="2" tabindex="0"><span class="step-num">02</span> Transcript Generator</li>
       <li class="step" data-step="3" tabindex="0"><span class="step-num">03</span> Detect Hooks</li>
       <li class="step" data-step="4" tabindex="0"><span class="step-num">04</span> Render</li>
       <li class="step" data-step="5" tabindex="0"><span class="step-num">05</span> Gallery</li>
@@ -35,8 +36,29 @@
   <!-- Main Content Area -->
   <main class="main-content">
 
+    <section id="panel-0" class="step-panel home-panel">
+      <div class="page-header">
+        <h1>ShortsM</h1>
+        <p class="page-sub">Choose what you want to do.</p>
+      </div>
+      <div class="home-options">
+        <button class="home-option" data-go-step="1" type="button">
+          <span class="home-option-number">01</span>
+          <span class="home-option-title">YouTube Downloader</span>
+          <span class="home-option-description">Find a video, choose a format, and download it to this device.</span>
+          <span class="home-option-action">Open downloader <span aria-hidden="true">&rarr;</span></span>
+        </button>
+        <button class="home-option" data-go-step="2" type="button">
+          <span class="home-option-number">02</span>
+          <span class="home-option-title">Transcript Generator</span>
+          <span class="home-option-description">Upload a video from your device and create a timestamped transcript.</span>
+          <span class="home-option-action">Generate transcript <span aria-hidden="true">&rarr;</span></span>
+        </button>
+      </div>
+    </section>
+
     <!-- STEP 1: SOURCE & DOWNLOAD -->
-    <section id="panel-1" class="step-panel">
+    <section id="panel-1" class="step-panel hidden">
       <div class="page-header">
         <h1>Source & Download Video</h1>
         <p class="page-sub">Enter a YouTube URL to inspect and download high-quality video locally.</p>
@@ -107,12 +129,17 @@
       <div class="card">
         <div class="field-row">
           <div class="field flex-1">
-            <label class="label">Video File</label>
-            <input id="transcribePathInput" class="input" type="text" readonly/>
+            <label class="label" for="transcribeFileInput">Video File</label>
+            <input id="transcribeFileInput" class="input" type="file" accept="video/*,.mp4,.webm,.mkv,.mov,.avi,.m4v"/>
+            <span id="transcribeFileName" class="page-sub">Choose a video to upload, or use a previously downloaded video.</span>
           </div>
           <div class="field field-btn">
+            <button id="uploadVideoBtn" class="btn btn-secondary">Upload Video</button>
             <button id="transcribeBtn" class="btn btn-primary">Transcribe</button>
           </div>
+        </div>
+        <div class="transcript-save-option">
+          <label><input id="saveTranscriptCheck" type="checkbox"/> Save SRT and JSON files in ShortsM</label>
         </div>
         <div id="transcribeStatus" class="status-msg hidden"></div>
       </div>
@@ -120,7 +147,11 @@
       <div id="transcriptCard" class="card hidden">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
           <label class="label">Detected Segments (<span id="segCount">0</span>)</label>
-          <button class="btn btn-accent" data-go-step="3">Proceed to Detect Hooks &rarr;</button>
+          <div class="transcript-actions">
+            <button id="downloadSrtBtn" class="btn btn-secondary">Download SRT</button>
+            <button id="downloadTxtBtn" class="btn btn-secondary">Download TXT</button>
+            <button class="btn btn-accent" data-go-step="3">Detect Hooks &rarr;</button>
+          </div>
         </div>
         <div id="segmentsList" class="transcript-scroll"></div>
       </div>
@@ -149,30 +180,9 @@
         </div>
       </div>
 
-      <!-- Manual hook creation -->
-      <div class="card" style="margin-top: 10px;">
-        <label class="label">Add Manual Hook</label>
-        <div class="field-row" style="margin-top: 6px;">
-          <div class="field flex-1">
-            <label class="label">Hook Title</label>
-            <input id="manualHookTitleInput" class="input" type="text" maxlength="120" placeholder="My custom hook"/>
-          </div>
-          <div class="field">
-            <label class="label">Start (s)</label>
-            <input id="clipStartInput" class="input" type="number" min="0" step="0.5" value="0.0" style="width: 120px;"/>
-          </div>
-          <div class="field">
-            <label class="label">End (s)</label>
-            <input id="clipEndInput" class="input" type="number" min="0" step="0.5" value="30.0" style="width: 120px;"/>
-          </div>
-          <div class="field field-btn">
-            <button id="addManualHookBtn" class="btn btn-secondary">Add Hook</button>
-          </div>
-        </div>
-        <div class="field-row" style="margin-top: 10px;">
-          <span class="page-sub">Select any detected or manual hook below, then generate exactly that clip.</span>
-          <button class="btn btn-accent" data-go-step="4">Ready to Render &rarr;</button>
-        </div>
+      <div class="field-row hook-actions">
+        <span class="page-sub">Select a detected clip, then continue to rendering.</span>
+        <button class="btn btn-accent" data-go-step="4">Ready to Render &rarr;</button>
       </div>
 
       <div id="hooksList" class="hooks-grid" style="margin-top: 12px;"></div>

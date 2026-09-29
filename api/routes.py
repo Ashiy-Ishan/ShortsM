@@ -1,6 +1,7 @@
 import logging
+import uuid
 from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -11,7 +12,7 @@ from core.downloader import download_video
 from core.transcriber import transcribe_video
 from core.hook_detector import detect_hooks
 from core.renderer import render_short, SHORTS_DIR
-from core.security import validate_data_file
+from core.security import ALLOWED_VIDEO_EXTENSIONS, DOWNLOADS_DIR, validate_data_file
 from core.jobs import JobManager
 
 app = FastAPI(title="ShortsM", version="2.0.0")
@@ -105,6 +106,43 @@ def cancel_job(job_id: str):
 class TranscribeRequest(BaseModel):
     filepath: str = Field(min_length=1, max_length=1024)
     model_size: str = Field(default="tiny", max_length=20)
+    save_files: bool = False
+
+@app.post("/api/video/upload")
+def upload_video(file: UploadFile = File(...)):
+    filename = Path(file.filename or "").name
+    suffix = Path(filename).suffix.lower()
+    if suffix not in ALLOWED_VIDEO_EXTENSIONS:
+        return JSONResponse(status_code=400, content={"error": "Unsupported video file type."})
+
+    destination = DOWNLOADS_DIR / f"{uuid.uuid4().hex}{suffix}"
+    temporary = destination.with_suffix(destination.suffix + ".upload")
+    total_bytes = 0
+    max_bytes = 4 * 1024 * 1024 * 1024
+    try:
+        with temporary.open("wb") as target:
+            while chunk := file.file.read(1024 * 1024):
+                total_bytes += len(chunk)
+                if total_bytes > max_bytes:
+                    temporary.unlink(missing_ok=True)
+                    return JSONResponse(status_code=413, content={"error": "Video exceeds the 4 GB upload limit."})
+                target.write(chunk)
+        if total_bytes == 0:
+            temporary.unlink(missing_ok=True)
+            return JSONResponse(status_code=400, content={"error": "The uploaded video is empty."})
+        temporary.replace(destination)
+    except OSError:
+        temporary.unlink(missing_ok=True)
+        logger.exception("Video upload failed")
+        return JSONResponse(status_code=500, content={"error": "Could not save the uploaded video."})
+    finally:
+        file.file.close()
+
+    return {
+        "filepath": str(destination),
+        "filename": filename,
+        "filesize_mb": round(total_bytes / (1024 * 1024), 2),
+    }
 
 @app.post("/api/video/transcribe")
 def transcribe(req: TranscribeRequest):
@@ -112,7 +150,7 @@ def transcribe(req: TranscribeRequest):
         validate_data_file(req.filepath, allow_short=False)
     except ValueError as exc:
         return {"error": str(exc)}
-    return transcribe_video(req.filepath, req.model_size)
+    return transcribe_video(req.filepath, req.model_size, save_files=req.save_files)
 
 # 04 Detect Hooks
 class HooksRequest(BaseModel):

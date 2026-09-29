@@ -31,7 +31,7 @@ def write_srt(segments: list[dict], srt_path: Path):
         lines.append(f"{idx}\n{start_ts} --> {end_ts}\n{seg['text']}\n")
     srt_path.write_text("\n".join(lines), encoding="utf-8")
 
-def transcribe_video(filepath: str, model_size: str = "tiny") -> dict:
+def transcribe_video(filepath: str, model_size: str = "tiny", *, save_files: bool = False) -> dict:
     """Transcribe a video file and return timestamped segments and full text."""
     try:
         p = validate_data_file(filepath)
@@ -52,19 +52,20 @@ def transcribe_video(filepath: str, model_size: str = "tiny") -> dict:
                 })
                 full_text_parts.append(text)
 
-        srt_path = p.with_suffix(".srt")
-        write_srt(segments, srt_path)
-
-        json_path = p.with_suffix(".transcript.json")
         result = {
             "language": info.language,
             "language_probability": round(info.language_probability, 2),
             "duration": round(info.duration, 2),
             "segments": segments,
             "full_text": " ".join(full_text_parts),
-            "srt_path": str(srt_path),
         }
-        json_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        if save_files:
+            srt_path = p.with_suffix(".srt")
+            json_path = p.with_suffix(".transcript.json")
+            write_srt(segments, srt_path)
+            json_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+            result["srt_path"] = str(srt_path)
+            result["json_path"] = str(json_path)
         return result
     except (ValueError, OSError) as exc:
         return {"error": str(exc)}

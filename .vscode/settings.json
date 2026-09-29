@@ -1,5 +1,14 @@
 {
     "chat.tools.terminal.autoApprove": {
-        ".venv/bin/python": true
+        ".venv/bin/python": true,
+        "/^python -c \"import importlib\\.util; print\\('multipart:', bool\\(importlib\\.util\\.find_spec\\('multipart'\\)\\)\\); import fastapi; print\\('fastapi:', fastapi\\.__version__\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^node --check frontend/app\\.js && \\.venv/bin/python -m py_compile api/routes\\.py core/transcriber\\.py$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        ".venv/bin/uvicorn": true
     }
 }

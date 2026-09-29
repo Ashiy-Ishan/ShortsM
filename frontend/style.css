@@ -117,6 +117,29 @@ html, body {
 }
 .step-active .step-num { color: var(--accent); }
 
+.home-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.home-option {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 22px;
+  text-align: left;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
+}
+.home-option:hover { border-color: var(--accent); background: var(--card-hover); transform: translateY(-2px); }
+.home-option-number { color: var(--accent-h); font-size: 0.76rem; font-weight: 700; }
+.home-option-title { font-size: 1.12rem; font-weight: 700; }
+.home-option-description { color: var(--dim); font-size: 0.88rem; line-height: 1.5; }
+.home-option-action { margin-top: auto; color: var(--accent-h); font-size: 0.84rem; font-weight: 600; }
+
 /* ── Main Content ─────────────────────── */
 .main-content {
   flex: 1;
@@ -325,6 +348,10 @@ html, body {
   white-space: nowrap;
 }
 .seg-text { color: var(--text); flex: 1; }
+.transcript-save-option { margin-top: 12px; color: var(--dim); font-size: 0.82rem; }
+.transcript-save-option label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.transcript-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.hook-actions { justify-content: space-between; align-items: center; }
 
 /* ── Hooks ────────────────────────────── */
 .hooks-grid {
@@ -431,6 +458,10 @@ html, body {
   .sidebar-footer { display: none; }
   .main-content { padding: 18px 14px; overflow: visible; }
   .field-row, .gallery-layout { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
+  .home-options { grid-template-columns: 1fr; }
+  .home-option { min-height: 180px; }
+  .transcript-actions { justify-content: flex-start; }
+  .hook-actions { align-items: stretch; }
   .field-btn { width: 100%; }
   .field-btn .btn { width: 100%; }
 }
