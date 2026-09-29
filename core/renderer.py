@@ -117,8 +117,11 @@ def render_short(
             "-c:v", "libx264",
             "-preset", "fast",
             "-crf", "22",
+            "-profile:v", "main",
+            "-pix_fmt", "yuv420p",
             "-c:a", "aac",
             "-b:a", "128k",
+            "-movflags", "+faststart",
             "-shortest",
             str(out_file)
         ]

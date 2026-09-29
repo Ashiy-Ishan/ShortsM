@@ -525,20 +525,21 @@ async function loadGallery() {
 function playInGallery(url, title, filepath) {
   const player = document.getElementById('galleryVideoPlayer');
   const normalizedUrl = new URL(url, window.location.href).href;
+  const playableUrl = `${normalizedUrl}${normalizedUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
   player.addEventListener('error', () => {
     const detail = player.error ? ` (${player.error.code})` : '';
     addLog(`Unable to play ${title}${detail}.`, 'error');
     showError('The selected short could not be played.');
   }, { once: true });
   player.pause();
-  player.src = normalizedUrl;
+  player.src = playableUrl;
   player.load();
   player.play().then(
     () => addLog(`Playing ${title}.`),
     error => addLog(`Video loaded. Press play to start ${title}: ${error.message}`, 'warning')
   );
   document.getElementById('playerTitle').textContent = title;
-  state.activeGalleryShort = { filename: title, url: normalizedUrl };
+  state.activeGalleryShort = { filename: title, url: playableUrl };
 }
 
 function addManualHook() {
